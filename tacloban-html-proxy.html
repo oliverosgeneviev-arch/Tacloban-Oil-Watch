@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⛽ Tacloban Oil Watch — April 2026</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d1117; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #161b22; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ── !! REPLACE THIS WITH YOUR CLOUDFLARE WORKER URL !! ─────────────────
+    const PROXY_URL = "https://yellow-poetry-cf52.oliverosgeneviev.workers.dev";
+    // ────────────────────────────────────────────────────────────────────────
+
+    const BUFFER      = 10;
+    const LPG_BUFFER  = 50;
+    const STORAGE_KEY = "tacloban_oil_watch_v3";
+    const EDITS_KEY   = "tacloban_oil_watch_edits_v3";
+    const AUTO_MS     = 60 * 60 * 1000; // 60 min
+
+    // ── Seed data — Week of April 7–11, 2026 ──────────────────────────────
+    const SEED_STATIONS = [
+      { id:"sh1",  brand:"Shell",    name:"SH Real North Tacloban",        area:"Downtown",         address:"Real St., Downtown Tacloban",              diesel:170.10, gas91:110.50, gas95:115.00, kero:177.10, source:"DOE Apr 7", communityEdit:false },
+      { id:"sh2",  brand:"Shell",    name:"SH Abucay Tacloban",            area:"Abucay",           address:"Brgy. 91 Abucay, Maharlika Hwy",           diesel:170.10, gas91:110.50, gas95:115.00, kero:177.10, source:"DOE Apr 7", communityEdit:false },
+      { id:"sh3",  brand:"Shell",    name:"SH Picas Tacloban",             area:"Picas/Airport",    address:"Picas, Airport Road",                      diesel:170.10, gas91:110.50, gas95:115.00, kero:177.10, source:"DOE Apr 7", communityEdit:false },
+      { id:"sh4",  brand:"Shell",    name:"SH Diit Tacloban",              area:"Diit",             address:"Brgy. 99, Diit",                           diesel:170.10, gas91:110.50, gas95:115.00, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"sh5",  brand:"Shell",    name:"SH Nula-Tula Tacloban",         area:"Nula-Tula",        address:"Brgy. 3, Nula-Tula, Pan-Philippine Hwy",   diesel:170.10, gas91:110.50, gas95:115.00, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"sh6",  brand:"Shell",    name:"SH Apitong Maharlika",          area:"Apitong",          address:"Brgy. 92, Apitong, Maharlika Hwy",         diesel:170.10, gas91:110.50, gas95:115.00, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"pt1",  brand:"Petron",   name:"Hi-Q Petron (Veteranos)",       area:"Downtown",         address:"Cor. Avenida Veteranos & Rizal Sts.",       diesel:169.10, gas91:109.50, gas95:114.00, kero:176.10, source:"DOE Apr 7", communityEdit:false },
+      { id:"pt2",  brand:"Petron",   name:"MCJ Petron (Real St.)",         area:"Downtown",         address:"Real St., Downtown",                        diesel:169.10, gas91:109.50, gas95:114.00, kero:176.10, source:"DOE Apr 7", communityEdit:false },
+      { id:"pt3",  brand:"Petron",   name:"Hi-Q Petron (Abucay)",          area:"Abucay",           address:"Maharlika Hwy, Brgy. 91 Abucay",           diesel:169.10, gas91:109.50, gas95:114.00, kero:176.10, source:"DOE Apr 7", communityEdit:false },
+      { id:"pt4",  brand:"Petron",   name:"Beltran Petron (Marasbaras)",   area:"Marasbaras",       address:"Marasbaras, near Robinsons Place",          diesel:169.10, gas91:109.50, gas95:114.00, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"pt5",  brand:"Petron",   name:"VEES5 Corp Petron (Sagkahan)",  area:"Sagkahan",         address:"Sagkahan–San Jose Jct, Pan-Philippine Hwy", diesel:169.10, gas91:109.50, gas95:114.00, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"pt6",  brand:"Petron",   name:"Petron Nula-Tula",              area:"Nula-Tula",        address:"3 Upper Nula-Tula, Pan-Philippine Hwy",    diesel:169.10, gas91:109.50, gas95:114.00, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"pt7",  brand:"Petron",   name:"Herminia Davocol Petron",       area:"Tacloban",         address:"Tacloban City",                            diesel:169.10, gas91:109.50, gas95:114.00, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"cx1",  brand:"Caltex",   name:"FPN Caltex (Fatima Village)",   area:"Fatima/Diversion", address:"Brgy. 77 Fatima Village, Diversion Road",  diesel:169.50, gas91:110.00, gas95:114.50, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"cx2",  brand:"Caltex",   name:"FPN Caltex (Caibaan)",          area:"Caibaan",          address:"Maharlika Hwy, Brgy. 95 Caibaan",          diesel:169.50, gas91:110.00, gas95:114.50, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"cx3",  brand:"Caltex",   name:"Esprutingkle Gas (Sto. Niño)",  area:"Downtown",         address:"Cor. Sto. Niño & Avenida Veteranos",       diesel:169.50, gas91:110.00, gas95:114.50, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"so1",  brand:"SEAOIL",   name:"Gazz Up Abucay (SEAOIL)",       area:"Abucay",           address:"Brgy. 91, Abucay",                         diesel:168.25, gas91:109.50, gas95:114.00, kero:176.10, source:"DOE Apr 7", communityEdit:false },
+      { id:"so2",  brand:"SEAOIL",   name:"EFTI Bagacay (SEAOIL)",         area:"Bagacay",          address:"Brgy. 93, Bagacay, Maharlika Hwy",         diesel:168.25, gas91:109.50, gas95:114.00, kero:176.10, source:"DOE Apr 7", communityEdit:false },
+      { id:"so3",  brand:"SEAOIL",   name:"Gazz Up Caibaan (SEAOIL)",      area:"Caibaan",          address:"Brgy. 95, Caibaan",                        diesel:168.25, gas91:109.50, gas95:114.00, kero:null,   source:"DOE Apr 7", communityEdit:false },
+      { id:"nf1",  brand:"Nitrofuel", name:"Nitrofuel Tigbao",             area:"Tigbao",           address:"Brgy. 94, Tigbao, Maharlika Hwy",          diesel:168.00, gas91:109.00, gas95:113.50, kero:null,   source:"Est. Apr 7", communityEdit:false },
+      { id:"nf2",  brand:"Nitrofuel", name:"Nitrofuel Utap",               area:"Utap",             address:"Brgy. Utap, Maharlika Hwy",                diesel:168.00, gas91:109.00, gas95:113.50, kero:null,   source:"Est. Apr 7", communityEdit:false },
+      { id:"nf3",  brand:"Nitrofuel", name:"Nitrofuel Cogon",              area:"Cogon",            address:"Cogon Area",                               diesel:168.00, gas91:109.00, gas95:113.50, kero:null,   source:"Est. Apr 7", communityEdit:false },
+      { id:"ot1",  brand:"Flying V",      name:"Flying V (Pan-Phil Hwy)",  area:"Pan-Phil Hwy",  address:"Pan-Philippine Hwy, Tacloban",               diesel:168.00, gas91:109.00, gas95:null, kero:null, source:"Est. Apr 7", communityEdit:false },
+      { id:"ot2",  brand:"EP Fuels",      name:"EP Fuels Tacloban",        area:"Pan-Phil Hwy",  address:"Pan-Philippine Hwy, Tacloban",               diesel:168.00, gas91:109.00, gas95:null, kero:null, source:"Est. Apr 7", communityEdit:false },
+      { id:"ot3",  brand:"Star Oil",      name:"Star Oil Anibong",         area:"Anibong",       address:"Anibong, Tacloban",                          diesel:167.00, gas91:108.00, gas95:null, kero:null, source:"Est. Apr 7", communityEdit:false },
+      { id:"ot4",  brand:"Filoil",        name:"Filoil (Airport Road)",    area:"Picas/Airport", address:"Picas–San Jose DZR Airport Road",            diesel:167.00, gas91:108.00, gas95:null, kero:null, source:"Est. Apr 7", communityEdit:false },
+      { id:"ot5",  brand:"JDG Petroleum", name:"JDG Petroleum Abucay",     area:"Abucay",        address:"Brgy. 91 Abucay, Maharlika Hwy",            diesel:167.00, gas91:108.00, gas95:null, kero:null, source:"Est. Apr 7", communityEdit:false },
+    ];
+
+    const SEED_LPG = [
+      { id:"lpg1",  brand:"Petron Gasul",    dealer:"Carbert Marketing",          address:"Oceanic Bldg., J. Romualdez St.", phone:"053-321-4015", price11kg:1750, source:"Calbayog proxy Apr 7", communityEdit:false },
+      { id:"lpg2",  brand:"Petron Gasul",    dealer:"Carbert Mktg (Anibong)",     address:"PHHC, Brgy. Anibong",             phone:"053-321-4015", price11kg:1750, source:"Calbayog proxy Apr 7", communityEdit:false },
+      { id:"lpg3",  brand:"Petron Gasul",    dealer:"Carbert Mktg (Sagkahan)",    address:"Brgy. Sagkahan",                  phone:"053-321-4015", price11kg:1750, source:"Calbayog proxy Apr 7", communityEdit:false },
+      { id:"lpg4",  brand:"Fiesta Gas",      dealer:"Carbert Mktg (Fiesta)",      address:"National Hwy, Brgy. Sagkahan",    phone:"053-321-4015", price11kg:1700, source:"Calbayog proxy Apr 7", communityEdit:false },
+      { id:"lpg5",  brand:"Petron Gasul",    dealer:"Tacloban Fiesta Petron LPG", address:"158 Avenida Rizal, Downtown",     phone:"",             price11kg:1750, source:"Calbayog proxy Apr 7", communityEdit:false },
+      { id:"lpg6",  brand:"Petron Gasul",    dealer:"ECONOGAS Marketing",         address:"T. Padilla St., Tacloban",        phone:"",             price11kg:1745, source:"Est. Apr 7",           communityEdit:false },
+      { id:"lpg7",  brand:"Solane",          dealer:"LPG Fuel Boss (San Jose)",   address:"San Jose, Tacloban",              phone:"0928-405-7079",price11kg:1680, source:"Est. Apr 7",           communityEdit:false },
+      { id:"lpg8",  brand:"Solane",          dealer:"LPG Fuel Boss (Nula-Tula)",  address:"Nula-Tula, Tacloban",             phone:"0917-323-7878",price11kg:1680, source:"Est. Apr 7",           communityEdit:false },
+      { id:"lpg9",  brand:"PryceGas",        dealer:"PryceGas Tacloban",          address:"Tacloban City / Sta. Fe Road",    phone:"",             price11kg:1620, source:"Est. Apr 7",           communityEdit:false },
+      { id:"lpg10", brand:"Samar Leyte Gas", dealer:"Samar Leyte Gas Center",     address:"Burgos St., Tacloban",            phone:"053-327-5679", price11kg:1650, source:"Est. Apr 7",           communityEdit:false },
+      { id:"lpg11", brand:"Seagas",          dealer:"SEAOIL (via Cebu terminal)", address:"via Gazz Up / EFTI outlets",      phone:"",             price11kg:1720, source:"Est. Apr 7",           communityEdit:false },
+      { id:"lpg12", brand:"Clean Gas",       dealer:"Clean Gas Corporation",      address:"Tacloban City",                   phone:"",             price11kg:1620, source:"Est. Apr 7",           communityEdit:false },
+    ];
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    const phTime  = () => new Date().toLocaleString("en-PH",{timeZone:"Asia/Manila",dateStyle:"medium",timeStyle:"short"});
+    const fmt     = v  => v != null ? `₱${Number(v).toFixed(2)}` : "—";
+    const fmtBuf  = (v,b=BUFFER) => v != null ? `₱${(Number(v)+b).toFixed(2)}` : "—";
+
+    const BRAND_COLOR = {
+      Shell:"#f59e0b", Petron:"#ef4444", Caltex:"#3b82f6",
+      SEAOIL:"#8b5cf6", Nitrofuel:"#22c55e", "Flying V":"#ec4899",
+      "EP Fuels":"#14b8a6", "Star Oil":"#f97316", Filoil:"#06b6d4",
+      "JDG Petroleum":"#84cc16", "Petron Gasul":"#ef4444", "Fiesta Gas":"#f97316",
+      Solane:"#3b82f6", PryceGas:"#a855f7", "Samar Leyte Gas":"#22c55e",
+      Seagas:"#8b5cf6", "Clean Gas":"#14b8a6",
+    };
+    const brandColor = b => BRAND_COLOR[b] || "#8b949e";
+
+    const save = (k, d) => { try { localStorage.setItem(k, JSON.stringify(d)); } catch {} };
+    const load = k      => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):null; } catch{return null;} };
+
+    // ── CSS ───────────────────────────────────────────────────────────────────
+    const css = {
+      app:   { background:"#0d1117", minHeight:"100vh", color:"#e6edf3", fontFamily:"'Segoe UI',sans-serif", fontSize:"13px" },
+      hdr:   { background:"linear-gradient(135deg,#161b22,#1f2937)", borderBottom:"2px solid #f97316", padding:"10px 16px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" },
+      h1:    { color:"#f97316", fontSize:16, fontWeight:700, margin:0 },
+      dot:   { width:10, height:10, borderRadius:"50%", flexShrink:0, animation:"pulse 1.8s infinite" },
+      main:  { maxWidth:1200, margin:"0 auto", padding:"12px 14px" },
+      banner:{ background:"#2d1515", border:"1px solid #dc2626", borderRadius:8, padding:"8px 12px", marginBottom:10, fontSize:12, color:"#fca5a5", lineHeight:1.6 },
+      bufBan:{ background:"#1a2010", border:"1px solid #4d7c0f", borderRadius:8, padding:"8px 12px", marginBottom:10, fontSize:12, color:"#a3e635", lineHeight:1.6 },
+      tab:   a => ({ background:a?"#f97316":"#161b22", color:a?"#fff":"#8b949e", border:a?"none":"1px solid #30363d", borderRadius:6, padding:"5px 14px", cursor:"pointer", fontWeight:a?700:400, fontSize:12 }),
+      bar:   { display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" },
+      input: { background:"#161b22", border:"1px solid #30363d", color:"#e6edf3", borderRadius:6, padding:"5px 10px", fontSize:12, outline:"none" },
+      sel:   { background:"#161b22", border:"1px solid #30363d", color:"#e6edf3", borderRadius:6, padding:"5px 10px", fontSize:12 },
+      btn:   c => ({ background:c||"#f97316", color:"#fff", border:"none", borderRadius:6, padding:"5px 12px", cursor:"pointer", fontSize:12, fontWeight:600 }),
+      tbl:   { width:"100%", borderCollapse:"collapse", fontSize:12 },
+      th:    { background:"#1f2937", padding:"7px 10px", textAlign:"left", fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em", color:"#8b949e", borderBottom:"1px solid #30363d", whiteSpace:"nowrap" },
+      td:    { padding:"7px 10px", borderBottom:"1px solid #1a1f27", verticalAlign:"middle" },
+      card:  { background:"#161b22", border:"1px solid #30363d", borderRadius:10, overflow:"hidden" },
+      badge: c => ({ display:"inline-block", padding:"2px 6px", borderRadius:4, fontSize:10, fontWeight:700, background:c+"22", color:c, border:`1px solid ${c}44` }),
+      modal: { position:"fixed", inset:0, background:"rgba(0,0,0,.75)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 },
+      mbox:  { background:"#161b22", border:"1px solid #30363d", borderRadius:12, padding:20, width:360, maxWidth:"90vw" },
+      mh:    { fontSize:14, fontWeight:700, color:"#f97316", marginBottom:12 },
+      mlbl:  { fontSize:11, color:"#8b949e", marginBottom:4, display:"block" },
+      minp:  { background:"#0d1117", border:"1px solid #30363d", color:"#e6edf3", borderRadius:6, padding:"6px 10px", fontSize:13, width:"100%", outline:"none", marginBottom:10 },
+      mrow:  { display:"flex", gap:8, marginTop:12 },
+      status:{ display:"flex", gap:10, alignItems:"center", marginLeft:"auto", fontSize:11, flexWrap:"wrap" },
+    };
+
+    // ── App ───────────────────────────────────────────────────────────────────
+    function App() {
+      const [stations,    setStations]    = useState(SEED_STATIONS);
+      const [lpgList,     setLpgList]     = useState(SEED_LPG);
+      const [edits,       setEdits]       = useState([]);
+      const [tab,         setTab]         = useState("stations");
+      const [editModal,   setEditModal]   = useState(null);
+      const [search,      setSearch]      = useState("");
+      const [filterBrand, setFilterBrand] = useState("All");
+      const [aiStatus,    setAiStatus]    = useState("idle");   // idle|loading|ok|err
+      const [lastFetch,   setLastFetch]   = useState("—");
+      const [countdown,   setCountdown]   = useState(60);
+      const timerRef = useRef(null);
+      const tickRef  = useRef(null);
+
+      useEffect(() => {
+        const s = load(STORAGE_KEY); if(s?.stations) setStations(s.stations); if(s?.lpgList) setLpgList(s.lpgList);
+        const e = load(EDITS_KEY);   if(e) setEdits(e);
+        startCountdown();
+        return () => { clearTimeout(timerRef.current); clearInterval(tickRef.current); };
+      }, []);
+
+      useEffect(() => { save(STORAGE_KEY, { stations, lpgList }); }, [stations, lpgList]);
+      useEffect(() => { save(EDITS_KEY, edits); }, [edits]);
+
+      const startCountdown = () => {
+        clearTimeout(timerRef.current); clearInterval(tickRef.current);
+        let mins = 60; setCountdown(60);
+        tickRef.current  = setInterval(() => { mins--; setCountdown(mins); if(mins<=0) clearInterval(tickRef.current); }, 60000);
+        timerRef.current = setTimeout(fetchAIPrices, AUTO_MS);
+      };
+
+      const fetchAIPrices = useCallback(async () => {
+        if (PROXY_URL.includes("YOUR_WORKER_URL")) {
+          alert("⚠️ Please set your Cloudflare Worker URL in the PROXY_URL constant at the top of the script.");
+          return;
+        }
+        setAiStatus("loading");
+        const today = new Date().toLocaleDateString("en-PH",{timeZone:"Asia/Manila",dateStyle:"long"});
+        const prompt = `You are a Philippine fuel price data agent. Today is ${today}.
+
+Search the web for the MOST RECENT DOE Philippines fuel price bulletin and oil company advisories (Petron, Shell, SEAOIL, Caltex) for the CURRENT WEEK. Also check for Eastern Visayas or Tacloban-specific fuel price reports.
+
+Return ONLY valid JSON, no markdown, no explanation:
+{
+  "weekLabel": "e.g. April 14-18 2026",
+  "source": "string",
+  "shell":   {"diesel": number, "gas91": number, "gas95": number, "kero": number},
+  "petron":  {"diesel": number, "gas91": number, "gas95": number, "kero": number},
+  "caltex":  {"diesel": number, "gas91": number, "gas95": number},
+  "seaoil":  {"diesel": number, "gas91": number, "gas95": number, "kero": number},
+  "generic": {"diesel": number, "gas91": number},
+  "lpg_petron_gasul_11kg": number,
+  "lpg_fiesta_11kg": number,
+  "lpg_solane_11kg": number,
+  "lpg_prycegas_11kg": number,
+  "lpg_seagas_11kg": number,
+  "changeNote": "brief note on price changes this week"
+}
+Use null for values you cannot verify.`;
+
+        try {
+          const res = await fetch(PROXY_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 1024,
+              messages: [{ role:"user", content: prompt }],
+              tools: [{ type:"web_search_20250305", name:"web_search" }],
+            }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+          const match = text.match(/\{[\s\S]*\}/);
+          if (!match) throw new Error("No JSON in response");
+          const p = JSON.parse(match[0]);
+
+          const priceMap = { Shell:p.shell||{}, Petron:p.petron||{}, Caltex:p.caltex||{}, SEAOIL:p.seaoil||{} };
+          setStations(prev => prev.map(s => {
+            const bp = priceMap[s.brand];
+            if (!bp) return { ...s, diesel:p.generic?.diesel??s.diesel, gas91:p.generic?.gas91??s.gas91, source:p.weekLabel||s.source, communityEdit:false };
+            return { ...s, diesel:bp.diesel??s.diesel, gas91:bp.gas91??s.gas91, gas95:bp.gas95??s.gas95, kero:bp.kero??s.kero, source:p.weekLabel||s.source, communityEdit:false };
+          }));
+
+          const lpgMap = { "Petron Gasul":p.lpg_petron_gasul_11kg, "Fiesta Gas":p.lpg_fiesta_11kg, Solane:p.lpg_solane_11kg, PryceGas:p.lpg_prycegas_11kg, Seagas:p.lpg_seagas_11kg };
+          setLpgList(prev => prev.map(l => {
+            const np = lpgMap[l.brand]; if(!np) return l;
+            return { ...l, price11kg:np, source:p.weekLabel||l.source, communityEdit:false };
+          }));
+
+          const log = { ts:phTime(), type:"ai-auto", msg:`🤖 AI auto-updated · ${p.weekLabel||""}. ${p.changeNote||""}`, source:p.source||"AI web search" };
+          setEdits(prev => [log,...prev].slice(0,200));
+          setLastFetch(phTime()); setAiStatus("ok"); startCountdown();
+        } catch(e) {
+          console.error("AI fetch error:", e);
+          setAiStatus("err"); startCountdown();
+        }
+      }, []);
+
+      const submitEdit = (type, id, field, newVal, note) => {
+        const val = parseFloat(newVal);
+        if (isNaN(val)||val<=0) { alert("Please enter a valid price."); return; }
+        if (type==="station") setStations(prev=>prev.map(s=>s.id===id?{...s,[field]:val,communityEdit:true,source:"Community report"}:s));
+        else setLpgList(prev=>prev.map(l=>l.id===id?{...l,price11kg:val,communityEdit:true,source:"Community report"}:l));
+        const item = type==="station"?stations.find(s=>s.id===id):lpgList.find(l=>l.id===id);
+        const log = { ts:phTime(), type:"community", msg:`👥 ${item?.name||item?.dealer} · ${field||"LPG price"} → ₱${val.toFixed(2)}${note?" · "+note:""}`, source:"Community" };
+        setEdits(prev=>[log,...prev].slice(0,200));
+        setEditModal(null);
+      };
+
+      const resetData = () => {
+        if (!confirm("Reset all data to DOE seed values? All community edits and AI updates will be cleared.")) return;
+        setStations(SEED_STATIONS); setLpgList(SEED_LPG); setEdits([]);
+      };
+
+      const brands = ["All",...new Set(stations.map(s=>s.brand))];
+      const fS = stations.filter(s => {
+        const q=search.toLowerCase();
+        return (!q||[s.name,s.area,s.address].some(f=>f.toLowerCase().includes(q))) && (filterBrand==="All"||s.brand===filterBrand);
+      });
+      const fL = lpgList.filter(l => { const q=search.toLowerCase(); return !q||[l.brand,l.dealer,l.address].some(f=>f.toLowerCase().includes(q)); });
+
+      const avg  = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+      const avgD = avg(stations.map(s=>s.diesel)).toFixed(2);
+      const avgG = avg(stations.map(s=>s.gas91)).toFixed(2);
+      const minD = Math.min(...stations.map(s=>s.diesel)).toFixed(2);
+      const minG = Math.min(...stations.map(s=>s.gas91)).toFixed(2);
+
+      const dotColor = aiStatus==="loading"?"#f97316":aiStatus==="err"?"#ef4444":"#22c55e";
+      const commEdits = edits.filter(e=>e.type==="community").length;
+
+      return (
+        <div style={css.app}>
+          {/* ── Header ── */}
+          <div style={css.hdr}>
+            <div style={{...css.dot, background:dotColor}} />
+            <div>
+              <div style={css.h1}>⛽ Tacloban Oil Watch</div>
+              <div style={{fontSize:11,color:"#8b949e"}}>Tacloban City, Leyte · Community + AI-Powered · April 2026</div>
+            </div>
+            <div style={css.status}>
+              <span style={{color:"#6e7681"}}>Last AI fetch: <strong style={{color:"#e6edf3"}}>{lastFetch}</strong></span>
+              <span style={{color:"#6e7681"}}>Auto in: <strong style={{color:"#f97316"}}>{countdown}m</strong></span>
+              <button style={css.btn()} onClick={fetchAIPrices} disabled={aiStatus==="loading"}>
+                {aiStatus==="loading"?"⏳ Fetching…":"🔄 Refresh Now"}
+              </button>
+              <button style={css.btn("#374151")} onClick={resetData}>↺ Reset</button>
+            </div>
+          </div>
+
+          <div style={css.main}>
+            {/* ── Banners ── */}
+            <div style={css.banner}>
+              <strong>🚨 National Energy Emergency Active (March 24, 2026)</strong> — Strait of Hormuz closure caused PH fuel prices to spike sharply. US-Iran ceasefire April 8. Rollback projected week of April 13–18. Monitor <strong>doe.gov.ph</strong>.
+            </div>
+            <div style={css.bufBan}>
+              <strong>ℹ️ +₱{BUFFER}/L fuel buffer · +₱{LPG_BUFFER} per 11 kg LPG</strong> — DOE publishes national reference prices. Tacloban pump prices are typically ₱5–₱15 higher due to inter-island freight and local margins. <strong style={{color:"#fff"}}>Green = estimated pump price.</strong> Use ✏️ Report to submit actual prices you see at the pump.
+            </div>
+
+            {/* ── Summary Cards ── */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:12}}>
+              {[
+                {label:"Avg Diesel (est.)",  val:`₱${(parseFloat(avgD)+BUFFER).toFixed(2)}/L`, sub:`DOE ref ₱${avgD}`,        col:"#60a5fa"},
+                {label:"Avg RON 91 (est.)",  val:`₱${(parseFloat(avgG)+BUFFER).toFixed(2)}/L`, sub:`DOE ref ₱${avgG}`,        col:"#f97316"},
+                {label:"Cheapest Diesel",     val:`₱${(parseFloat(minD)+BUFFER).toFixed(2)}/L`, sub:`DOE ref ₱${minD}`,        col:"#22c55e"},
+                {label:"Cheapest RON 91",     val:`₱${(parseFloat(minG)+BUFFER).toFixed(2)}/L`, sub:`DOE ref ₱${minG}`,        col:"#4ade80"},
+                {label:"Stations Tracked",    val:stations.length,                               sub:`${lpgList.length} dealers`,col:"#a78bfa"},
+                {label:"Community Reports",   val:commEdits,                                     sub:"Saved locally",           col:"#34d399"},
+              ].map((c,i)=>(
+                <div key={i} style={{background:"#161b22",border:`1px solid ${c.col}33`,borderRadius:10,padding:"10px 12px"}}>
+                  <div style={{fontSize:10,color:"#8b949e",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>{c.label}</div>
+                  <div style={{fontSize:18,fontWeight:800,color:c.col}}>{c.val}</div>
+                  <div style={{fontSize:10,color:"#6e7681",marginTop:2}}>{c.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Toolbar ── */}
+            <div style={css.bar}>
+              <input style={{...css.input,width:200}} placeholder="🔍 Search station, area…" value={search} onChange={e=>setSearch(e.target.value)} />
+              {tab==="stations"&&<select style={css.sel} value={filterBrand} onChange={e=>setFilterBrand(e.target.value)}>{brands.map(b=><option key={b}>{b}</option>)}</select>}
+              <div style={{display:"flex",gap:4}}>
+                {["stations","lpg","log"].map(t=>(
+                  <button key={t} style={css.tab(tab===t)} onClick={()=>setTab(t)}>
+                    {t==="stations"?`⛽ Stations (${stations.length})`:t==="lpg"?`🔥 LPG (${lpgList.length})`:`📋 Log (${edits.length})`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Tables ── */}
+            <div style={{overflowX:"auto"}}>
+              {tab==="stations"&&(
+                <div style={css.card}>
+                  <table style={css.tbl}>
+                    <thead><tr>
+                      <th style={css.th}>Brand / Station</th><th style={css.th}>Area</th>
+                      <th style={css.th}>Diesel DOE</th><th style={{...css.th,color:"#93c5fd"}}>+₱{BUFFER} Est.</th>
+                      <th style={css.th}>RON 91 DOE</th><th style={{...css.th,color:"#fdba74"}}>+₱{BUFFER} Est.</th>
+                      <th style={{...css.th,color:"#fb923c"}}>RON 95 Est.</th>
+                      <th style={{...css.th,color:"#c084fc"}}>Kero Est.</th>
+                      <th style={css.th}>Source</th><th style={css.th}>Report</th>
+                    </tr></thead>
+                    <tbody>
+                      {fS.map(s=>(
+                        <tr key={s.id} style={{background:s.communityEdit?"#1a2010":"transparent"}}>
+                          <td style={css.td}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{width:8,height:8,borderRadius:"50%",background:brandColor(s.brand),flexShrink:0}}/>
+                              <div><div style={{fontWeight:600,color:"#e6edf3"}}>{s.name}</div><div style={{fontSize:10,color:"#6e7681"}}>{s.address}</div></div>
+                            </div>
+                          </td>
+                          <td style={css.td}><span style={css.badge(brandColor(s.brand))}>{s.area}</span></td>
+                          <td style={{...css.td,color:"#60a5fa"}}>{fmt(s.diesel)}</td>
+                          <td style={{...css.td,color:"#93c5fd",fontWeight:700}}>{fmtBuf(s.diesel)}</td>
+                          <td style={{...css.td,color:"#f97316"}}>{fmt(s.gas91)}</td>
+                          <td style={{...css.td,color:"#fdba74",fontWeight:700}}>{fmtBuf(s.gas91)}</td>
+                          <td style={{...css.td,color:"#fb923c",fontWeight:700}}>{fmtBuf(s.gas95)}</td>
+                          <td style={{...css.td,color:"#c084fc",fontWeight:700}}>{fmtBuf(s.kero)}</td>
+                          <td style={css.td}><span style={{...css.badge(s.communityEdit?"#22c55e":"#8b949e"),fontSize:9}}>{s.communityEdit?"👥 Community":s.source}</span></td>
+                          <td style={css.td}><button style={{...css.btn("#1d4ed8"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditModal({type:"station",item:s})}>✏️</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {tab==="lpg"&&(
+                <div style={css.card}>
+                  <table style={css.tbl}>
+                    <thead><tr>
+                      <th style={css.th}>Brand</th><th style={css.th}>Dealer</th><th style={css.th}>Address</th>
+                      <th style={css.th}>Contact</th><th style={css.th}>DOE Ref 11kg</th>
+                      <th style={{...css.th,color:"#86efac"}}>Est. +₱{LPG_BUFFER}</th>
+                      <th style={css.th}>Source</th><th style={css.th}>Report</th>
+                    </tr></thead>
+                    <tbody>
+                      {fL.map(l=>(
+                        <tr key={l.id} style={{background:l.communityEdit?"#1a2010":"transparent"}}>
+                          <td style={css.td}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:brandColor(l.brand),flexShrink:0}}/><strong style={{color:brandColor(l.brand)}}>{l.brand}</strong></div></td>
+                          <td style={{...css.td,fontWeight:600}}>{l.dealer}</td>
+                          <td style={{...css.td,color:"#8b949e",fontSize:11}}>{l.address}</td>
+                          <td style={{...css.td,color:"#6e7681",fontSize:11}}>{l.phone||"—"}</td>
+                          <td style={{...css.td,color:"#4ade80"}}>₱{l.price11kg.toLocaleString()}</td>
+                          <td style={{...css.td,color:"#86efac",fontWeight:700}}>₱{(l.price11kg+LPG_BUFFER).toLocaleString()}</td>
+                          <td style={css.td}><span style={{...css.badge(l.communityEdit?"#22c55e":"#8b949e"),fontSize:9}}>{l.communityEdit?"👥 Community":l.source}</span></td>
+                          <td style={css.td}><button style={{...css.btn("#1d4ed8"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditModal({type:"lpg",item:l})}>✏️</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {tab==="log"&&(
+                <div style={css.card}>
+                  {edits.length===0&&<div style={{padding:20,color:"#6e7681",textAlign:"center"}}>No reports yet. Be the first to report a real pump price!</div>}
+                  {edits.map((e,i)=>(
+                    <div key={i} style={{padding:"10px 14px",borderBottom:"1px solid #1a1f27",display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <div style={{fontSize:16,flexShrink:0}}>{e.type==="ai-auto"?"🤖":"👥"}</div>
+                      <div><div style={{fontSize:12,color:"#c9d1d9"}}>{e.msg}</div><div style={{fontSize:10,color:"#6e7681",marginTop:3}}>{e.ts} · {e.source}</div></div>
+                      <span style={{...css.badge(e.type==="ai-auto"?"#3b82f6":"#22c55e"),marginLeft:"auto",flexShrink:0,alignSelf:"center"}}>{e.type==="ai-auto"?"🤖 AI":"👥 Community"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Footer ── */}
+            <div style={{background:"#1c1a16",border:"1px solid #4a3600",borderRadius:8,padding:"10px 12px",marginTop:12,fontSize:11,color:"#a16207",lineHeight:1.65}}>
+              <strong style={{color:"#f59e0b"}}>⚠️ Accuracy Notice:</strong> DOE reference prices effective April 7–11, 2026. Buffer is a conservative freight-and-margin estimate, not a price cap. Community reports are stored in your browser and not independently verified. "Est." prices are extrapolated from national DOE bulletins. Always verify at the pump. Report price gouging: <strong>1-800-10-DOE-2673</strong> · <strong>doe.gov.ph</strong>
+            </div>
+            <div style={{textAlign:"center",padding:"12px 0",fontSize:10,color:"#30363d"}}>
+              Tacloban Oil Watch · localStorage + Cloudflare Worker AI · No tracking
+            </div>
+          </div>
+
+          {editModal&&<EditModal editModal={editModal} setEditModal={setEditModal} submitEdit={submitEdit} stations={stations} lpgList={lpgList} css={css}/>}
+        </div>
+      );
+    }
+
+    function EditModal({editModal,setEditModal,submitEdit,stations,lpgList,css}) {
+      const [val,setVal]=useState(""); const [field,setField]=useState("diesel"); const [note,setNote]=useState("");
+      const {type,item}=editModal; const isStation=type==="station";
+      return (
+        <div style={css.modal} onClick={()=>setEditModal(null)}>
+          <div style={css.mbox} onClick={e=>e.stopPropagation()}>
+            <div style={css.mh}>✏️ Community Price Report</div>
+            <div style={{fontSize:12,color:"#c9d1d9",marginBottom:12}}>
+              <strong style={{color:"#f97316"}}>{item.name||item.dealer}</strong><br/>
+              <span style={{color:"#6e7681"}}>{item.address}</span>
+            </div>
+            {isStation&&<><label style={css.mlbl}>Fuel Type</label><select style={css.minp} value={field} onChange={e=>setField(e.target.value)}><option value="diesel">Diesel</option><option value="gas91">RON 91</option><option value="gas95">RON 95</option><option value="kero">Kerosene</option></select></>}
+            <label style={css.mlbl}>{isStation?"Actual Pump Price (₱/L)":"Actual Price per 11 kg cylinder (₱)"}</label>
+            <input style={css.minp} type="number" min="0" step="0.01" placeholder={isStation?"e.g. 172.50":"e.g. 1800"} value={val} onChange={e=>setVal(e.target.value)}/>
+            <label style={css.mlbl}>Note (optional)</label>
+            <input style={css.minp} type="text" placeholder='e.g. "saw this at 2pm today"' value={note} onChange={e=>setNote(e.target.value)}/>
+            <div style={{fontSize:10,color:"#6e7681",marginBottom:10}}>Reports are stored locally and flagged 👥 Community for transparency.</div>
+            <div style={css.mrow}>
+              <button style={css.btn("#22c55e")} onClick={()=>submitEdit(type,item.id,field,val,note)}>✅ Submit</button>
+              <button style={css.btn("#6e7681")} onClick={()=>setEditModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>
